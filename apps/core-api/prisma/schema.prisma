@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Channel {
+  whatsapp
+  instagram
+  messenger
+}
+
+enum ConversationMode {
+  BOT_ON
+  HUMAN
+}
+
+enum ConversationStatus {
+  open
+  closed
+}
+
+enum MessageType {
+  text
+  image
+  audio
+  doc
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  conversations Conversation[]
+  users         User[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String
+  name      String
+  role      String   @default("agent")
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+}
+
+model Conversation {
+  id              String             @id @default(uuid())
+  tenantId        String
+  channel         Channel
+  externalThreadId String
+  mode            ConversationMode   @default(BOT_ON)
+  status          ConversationStatus @default(open)
+  assignedUserId  String?
+  lastMessageAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  messages Message[]
+
+  @@unique([tenantId, channel, externalThreadId])
+  @@index([tenantId, status, lastMessageAt])
+}
+
+model Message {
+  id                String      @id @default(uuid())
+  tenantId          String
+  conversationId    String
+  channel           Channel
+  externalMessageId String
+  fromMe            Boolean
+  type              MessageType
+  text              String?
+  mediaUrl          String?
+  mimeType          String?
+  rawJson           Json?
+  ts                BigInt
+
+  createdAt DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([tenantId, channel, externalMessageId])
+  @@index([conversationId, createdAt])
+}

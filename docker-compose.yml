@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: omni_hub
+    ports:
+      - "5432:5432"
+    volumes:
+      - omni_hub_pg:/var/lib/postgresql/data
+
+volumes:
+  omni_hub_pg:
