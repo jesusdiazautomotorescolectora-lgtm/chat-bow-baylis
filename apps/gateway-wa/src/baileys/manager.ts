@@ -125,7 +125,7 @@ export async function startTenantSession(tenantId: string) {
 
         if (Buffer.isBuffer(buf)) {
           if (buf.length <= 3 * 1024 * 1024) {
-            mediaUrl = bufferToDataUrl(buf, mimeType);
+            mediaUrl = bufferToDataUrl(buf, mimeType ?? "image/jpeg");
           } else {
             logger.warn({ size: buf.length }, "image too large; skipping mediaUrl");
           }
