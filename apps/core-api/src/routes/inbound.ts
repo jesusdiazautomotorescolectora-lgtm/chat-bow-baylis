@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { Prisma } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { io } from "../socket.js";
 import { maybeBotReply } from "../bot/maybeBotReply.js";
 
@@ -88,7 +88,7 @@ inboundRouter.post("/events", async (req, res) => {
     return res.json({ ok: true, conversationId: convo.id, messageId: msg.id });
   } catch (e: any) {
     // Only treat unique constraint as dedupe; anything else should surface.
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+    if (e instanceof PrismaClientKnownRequestError && e.code === "P2002") {
       return res.json({ ok: true, deduped: true, conversationId: convo.id });
     }
     console.error("inbound/events failed", e);
