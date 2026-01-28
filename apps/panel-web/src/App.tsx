@@ -9,6 +9,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
 
   const active = useMemo(() => convos.find(c => c.id === activeId) || null, [convos, activeId]);
 
@@ -50,6 +51,17 @@ export default function App() {
     if (!text) return;
     setDraft("");
     await api.post(`/api/conversations/${active.id}/reply`, { text });
+    await loadMessages(active.id);
+  }
+
+  async function sendImage() {
+    if (!active) return;
+    const url = imageUrl.trim();
+    const caption = draft.trim();
+    if (!url) return;
+    setImageUrl("");
+    setDraft("");
+    await api.post(`/api/conversations/${active.id}/reply`, { image_url: url, caption });
     await loadMessages(active.id);
   }
 

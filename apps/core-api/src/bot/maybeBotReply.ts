@@ -1,4 +1,5 @@
 import { prisma } from "../prisma.js";
+import { io } from "../socket.js";
 import { BOT_ENABLED, env } from "../env.js";
 import { shouldHandoffToHuman } from "./rules.js";
 import { generateBotReply } from "./openai.js";
@@ -22,6 +23,7 @@ export async function maybeBotReply(args: {
       where: { id: convo.id },
       data: { mode: "HUMAN" }
     });
+    io.to(args.tenantId).emit("conversation_updated", { tenantId: args.tenantId, conversationId: convo.id });
     return;
   }
 
@@ -45,7 +47,7 @@ export async function maybeBotReply(args: {
   }
 
   // Persist as fromMe
-  await prisma.message.create({
+  const msg = await prisma.message.create({
     data: {
       tenantId: args.tenantId,
       conversationId: args.conversationId,
@@ -62,4 +64,8 @@ export async function maybeBotReply(args: {
     where: { id: args.conversationId },
     data: { lastMessageAt: new Date() }
   });
+
+  io.to(args.tenantId).emit("message_created", { tenantId: args.tenantId, conversationId: args.conversationId, messageId: msg.id });
+  io.to(args.tenantId).emit("conversation_updated", { tenantId: args.tenantId, conversationId: args.conversationId });
 }
+

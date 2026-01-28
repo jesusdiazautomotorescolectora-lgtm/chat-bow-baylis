@@ -1,10 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { Prisma } from "@prisma/client";
 import { io } from "../socket.js";
 import { maybeBotReply } from "../bot/maybeBotReply.js";
 
 export const inboundRouter = Router();
+
+function normalizeTsToMs(ts: number): number {
+  if (!Number.isFinite(ts) || ts <= 0) return Date.now();
+  return ts < 1_000_000_000_000 ? ts * 1000 : ts;
+}
+
 
 const InboundSchema = z.object({
   type: z.literal("inbound_message"),
@@ -16,7 +23,10 @@ const InboundSchema = z.object({
     fromMe: z.boolean(),
     type: z.enum(["text", "image", "audio", "doc"]),
     text: z.string().optional(),
-    mediaUrl: z.string().url().optional(),
+    mediaUrl: z.string().optional().refine((v) => {
+      if (!v) return true;
+      return v.startsWith("http://") || v.startsWith("https://") || v.startsWith("data:");
+    }, { message: "mediaUrl must be http(s) URL or data URL" }),
     mimeType: z.string().optional(),
     ts: z.number().int(),
     raw: z.any().optional(),
@@ -28,6 +38,8 @@ inboundRouter.post("/events", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
 
   const { tenantId, channel, externalThreadId, externalMessageId, fromMe, type, text, mediaUrl, mimeType, ts, raw } = parsed.data.payload;
+  const tsMs = normalizeTsToMs(ts);
+
 
   // upsert conversation
   const convo = await prisma.conversation.upsert({
@@ -38,10 +50,10 @@ inboundRouter.post("/events", async (req, res) => {
       externalThreadId,
       mode: "BOT_ON",
       status: "open",
-      lastMessageAt: new Date(ts),
+      lastMessageAt: new Date(tsMs),
     },
     update: {
-      lastMessageAt: new Date(ts),
+      lastMessageAt: new Date(tsMs),
     },
   });
 
@@ -59,7 +71,7 @@ inboundRouter.post("/events", async (req, res) => {
         mediaUrl,
         mimeType,
         rawJson: raw ?? undefined,
-        ts: BigInt(ts),
+        ts: BigInt(tsMs),
       }
     });
 
@@ -75,7 +87,11 @@ inboundRouter.post("/events", async (req, res) => {
 
     return res.json({ ok: true, conversationId: convo.id, messageId: msg.id });
   } catch (e: any) {
-    // unique constraint means duplicate event
-    return res.json({ ok: true, deduped: true, conversationId: convo.id });
+    // Only treat unique constraint as dedupe; anything else should surface.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return res.json({ ok: true, deduped: true, conversationId: convo.id });
+    }
+    console.error("inbound/events failed", e);
+    return res.status(500).json({ ok: false, error: "inbound/events failed" });
   }
 });

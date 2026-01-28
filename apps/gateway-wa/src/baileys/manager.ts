@@ -21,6 +21,18 @@ const logger = pino({ level: "info" });
 
 const tenants = new Map<string, TenantState>();
 
+function normalizeTsToMs(ts: any): number {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return Date.now();
+  return n < 1_000_000_000_000 ? n * 1000 : n;
+}
+
+function bufferToDataUrl(buf: Buffer, mimeType: string): string {
+  const b64 = buf.toString("base64");
+  return `data:${mimeType};base64,${b64}`;
+}
+
+
 function ensureTenant(tenantId: string): TenantState {
   const existing = tenants.get(tenantId);
   if (existing) return existing;
@@ -97,12 +109,30 @@ export async function startTenantSession(tenantId: string) {
     let mediaUrl: string | undefined;
     let mimeType: string | undefined;
 
-    // MVP: media download is optional; we forward raw and let core decide.
+    // MVP+: download image media and forward as data URL (keeps stack self-contained).
     if (type === "imageMessage") {
-      mimeType = message.imageMessage?.mimetype;
-      // TODO: implement storage upload; for now we skip mediaUrl.
-      // const buf = await downloadMediaMessage(msg, "buffer", {}, { logger } as any);
-      // upload -> mediaUrl
+      mimeType = message.imageMessage?.mimetype || "image/jpeg";
+      try {
+        const buf = await downloadMediaMessage(
+          msg,
+          "buffer",
+          {},
+          {
+            logger,
+            reuploadRequest: sock?.updateMediaMessage,
+          } as any
+        );
+
+        if (Buffer.isBuffer(buf)) {
+          if (buf.length <= 3 * 1024 * 1024) {
+            mediaUrl = bufferToDataUrl(buf, mimeType);
+          } else {
+            logger.warn({ size: buf.length }, "image too large; skipping mediaUrl");
+          }
+        }
+      } catch (e: any) {
+        logger.error({ err: String(e) }, "download image failed");
+      }
     }
 
     if (FORWARD_INBOUND) {
@@ -118,7 +148,7 @@ export async function startTenantSession(tenantId: string) {
           text,
           mediaUrl,
           mimeType,
-          ts: Number(msg.messageTimestamp || Date.now()),
+          ts: normalizeTsToMs(msg.messageTimestamp ?? Date.now()),
           raw: msg,
         }
       }).catch((e) => {

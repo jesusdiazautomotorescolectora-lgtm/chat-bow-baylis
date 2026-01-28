@@ -33,8 +33,13 @@ apiRouter.get("/conversations/:id/messages", async (req, res) => {
 const ReplySchema = z.object({
   text: z.string().min(1).optional(),
   image_url: z.string().url().optional(),
+  // accept camelCase too (some clients send this)
+  imageUrl: z.string().url().optional(),
   caption: z.string().optional(),
-});
+}).transform((v) => ({
+  ...v,
+  image_url: v.image_url ?? v.imageUrl,
+}));
 
 apiRouter.post("/conversations/:id/reply", async (req, res) => {
   const tenantId = getTenantId(req);
