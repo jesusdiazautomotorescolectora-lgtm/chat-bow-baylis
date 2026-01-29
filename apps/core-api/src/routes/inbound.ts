@@ -12,9 +12,103 @@ function normalizeTsToMs(ts: number): number {
   return ts < 1_000_000_000_000 ? ts * 1000 : ts;
 }
 
-inboundRouter.post("/", (req, res) => {
-  res.json({ ok: true });
+inboundRouter.post("/events", async (req, res) => {
+  const parsed = InboundSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+  }
+
+  try {
+    const {
+      tenantId,
+      channel,
+      externalThreadId,
+      externalMessageId,
+      fromMe,
+      type,
+      text,
+      mediaUrl,
+      mimeType,
+      ts,
+      raw,
+    } = parsed.data.payload;
+
+    const tsMs = normalizeTsToMs(ts);
+
+    // upsert conversation (AHORA dentro del try)
+    const convo = await prisma.conversation.upsert({
+      where: {
+        tenantId_channel_externalThreadId: { tenantId, channel, externalThreadId },
+      },
+      create: {
+        tenantId,
+        channel,
+        externalThreadId,
+        mode: "BOT_ON",
+        status: "open",
+        lastMessageAt: new Date(tsMs),
+      },
+      update: {
+        lastMessageAt: new Date(tsMs),
+      },
+    });
+
+    // create message + dedupe
+    try {
+      const msg = await prisma.message.create({
+        data: {
+          tenantId,
+          conversationId: convo.id,
+          channel,
+          externalMessageId,
+          fromMe,
+          type,
+          text,
+          mediaUrl,
+          mimeType,
+          rawJson: raw ?? undefined,
+          ts: BigInt(tsMs),
+        },
+      });
+
+      io.to(tenantId).emit("message_created", {
+        tenantId,
+        conversationId: convo.id,
+        messageId: msg.id,
+      });
+      io.to(tenantId).emit("conversation_updated", {
+        tenantId,
+        conversationId: convo.id,
+      });
+
+      if (!fromMe && (type === "text" || type === "image")) {
+        const latestText = (text || "").trim();
+        if (latestText) {
+          void maybeBotReply({
+            tenantId,
+            conversationId: convo.id,
+            channel,
+            externalThreadId,
+            latestUserText: latestText,
+          });
+        }
+      }
+
+      return res.json({ ok: true, conversationId: convo.id, messageId: msg.id });
+    } catch (e: any) {
+      if (e instanceof PrismaClientKnownRequestError && e.code === "P2002") {
+        return res.json({ ok: true, deduped: true, conversationId: convo.id });
+      }
+      console.error("inbound/events message.create failed", e);
+      return res.status(500).json({ ok: false, error: "message.create failed" });
+    }
+  } catch (e: any) {
+    // Esto evita el 502: siempre respondemos con 500 + log
+    console.error("inbound/events failed (outer)", e);
+    return res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
 });
+
 const InboundSchema = z.object({
   type: z.literal("inbound_message"),
   payload: z.object({
