@@ -1,135 +1,69 @@
-# Omni Hub MVP (Fase 1/2/3) — WhatsApp (Baileys) + Instagram/Messenger + Panel + Bot (OpenAI)
+# Panel MVP (Inbox + Reply) — limpio
 
-Monorepo **multi-tenant** para:
-- **gateway-wa**: WhatsApp no oficial via **Baileys (QR)** ✅
-- **gateway-meta**: Instagram/Messenger via **Meta Graph API** (stub / base) ✅
-- **core-api**: CRM + motor BOT/HUMAN + persistencia + realtime ✅
-- **panel-web**: Inbox web para agentes ✅
+Este repo es un **MVP mínimo funcional** para que el Panel sea usable:
 
-> Este ZIP es un **MVP funcional** para Fase 1 (WhatsApp + Panel + Core) y una base lista para extender Fase 2/3.
+- listar conversaciones (Inbox)
+- ver historial completo
+- enviar mensajes desde el panel (texto y/o imagen)
 
----
+## Arquitectura
+- `apps/panel-api`: Express + TypeScript + Prisma + PostgreSQL
+- `apps/panel-web`: Vite + React + TypeScript (UI básica)
 
-## Requisitos
-- Node.js 20+
-- Postgres 14+ (local o remoto)
-- (Opcional) Redis para colas (no requerido en este MVP)
+## Variables de entorno
+Copiá `.env.example` a `.env` y completá:
 
----
+- `DATABASE_URL` (con `schema=panel` recomendado)
+- `BOT_ADMIN_TOKEN` (token para header `x-panel-token`)
+- `BOT_API_URL` (opcional, solo si querés forward)
 
-## Quickstart (local)
+> **Headers requeridos en la API**
+> - `x-panel-token: <BOT_ADMIN_TOKEN>`
+> - `x-tenant-id: <uuid del tenant>`
 
-### 1) Instalar dependencias
+## Setup local
+
+### 1) Instalar deps
 ```bash
 npm install
 ```
 
-### 2) Configurar envs
-Copiá `.env.example` de cada app a `.env` y completá.
-
-- `apps/core-api/.env.example`
-- `apps/gateway-wa/.env.example`
-- `apps/gateway-meta/.env.example`
-- `apps/panel-web/.env.example`
-
-### 3) Levantar Postgres (opcional con docker)
+### 2) Migrar DB
 ```bash
-docker compose up -d db
+npm -w @omni/panel-api run prisma:generate
+npm -w @omni/panel-api run prisma:migrate
+npm -w @omni/panel-api run seed
 ```
 
-### 4) Migraciones Prisma (core-api)
+### 3) Correr API
 ```bash
-cd apps/core-api
-npx prisma migrate dev --name init
-cd ../..
+npm -w @omni/panel-api run dev
 ```
 
-### 5) Iniciar todo
+### 4) Correr Web
 ```bash
-npm run dev
+npm -w @omni/panel-web run dev
 ```
 
-- Core API: http://localhost:4000
-- Gateway WA: http://localhost:4010
-- Gateway Meta: http://localhost:4020
-- Panel Web: http://localhost:5173
+Abrís la web y te loguea por token/tenant.
 
----
+## Endpoints
+- `GET /api/health`
+- `GET /api/inbox`
+- `GET /api/inbox/:id/messages`
+- `POST /api/inbox/:id/reply`
 
-## FASE 1 — MVP (incluida)
-**Objetivo:** Inbox + historial + enviar/recibir WhatsApp + handoff bot→humano.
-
-Incluye:
-- Multi-tenant básico (tenant_id en headers/body)
-- DB: conversations + messages + users
-- Realtime (Socket.IO) para que el panel actualice inbox/mensajes
-- Gateway WA (Baileys):
-  - `POST /session/start`
-  - `GET /session/qr`
-  - `GET /session/status`
-  - `POST /send/text`
-  - `POST /send/image`
-- Core API:
-  - `GET /api/inbox`
-  - `GET /api/conversations/:id/messages`
-  - `POST /api/conversations/:id/reply`
-  - `POST /api/conversations/:id/takeover`
-  - `POST /api/conversations/:id/return-to-bot`
-  - `POST /api/conversations/:id/assign`
-
-> Nota: el “bot OpenAI” en Fase 1 está implementado como **módulo** con una función `maybeBotReply(...)`. Está listo para habilitarse con `OPENAI_API_KEY`, pero por defecto no spamea (reglas conservadoras).
-
----
-
-## FASE 2 — Omnicanal (base incluida, completar)
-**Objetivo:** unificar Instagram + Messenger en el mismo inbox.
-
-Incluye en este repo:
-- `apps/gateway-meta` con:
-  - `POST /webhooks/meta` (stub)
-  - `POST /send` (stub)
-- Contrato de eventos normalizados (`packages/shared/src/events.ts`)
-- Core ya soporta `channel = whatsapp|instagram|messenger`
-
-Pendiente para completar:
-- Verificación de firma de Meta (X-Hub-Signature-256)
-- Suscripción webhooks IG/Messenger y mapping de payloads reales
-- Envío real por Graph API
-
----
-
-## FASE 3 — SaaS vendible (pendiente, roadmap)
-- RBAC completo (admin/supervisor/agent/viewer) + políticas
-- Audit log completo (quién hizo qué, cuándo)
-- Reglas de routing (round-robin, skills, horarios)
-- Colas (BullMQ) para envíos, reintentos, media uploads
-- Storage serio (Supabase Storage / S3/R2)
-- Observabilidad (metrics, tracing, alertas)
-- Hardening (rate limits, encryption de secretos por tenant)
-
----
-
-## Contrato multi-tenant (MVP)
-Para simplificar:
-- El panel envía `x-tenant-id` (UUID) en requests al core.
-- Core usa ese tenant_id para filtrar conversaciones/mensajes.
-- Gateway WA maneja **una sesión por tenant** (auth en `apps/gateway-wa/data/auth/<tenant_id>`).
-
----
-
-## Scripts
-- `npm run dev` — levanta todo en paralelo
-- `npm run build` — build de todos los paquetes
-
----
-
-## Estructura
+### Body de reply
+```json
+{ "text": "hola", "imageUrl": "https://..." }
 ```
-apps/
-  core-api/
-  gateway-wa/
-  gateway-meta/
-  panel-web/
-packages/
-  shared/
-```
+Se normaliza a `image_url`.
+
+## Seed
+Se crean:
+- 1 tenant
+- 1 usuario
+- 1 conversación
+- algunos mensajes
+
+Así ya podés probar UI y API sin depender de Evolution.

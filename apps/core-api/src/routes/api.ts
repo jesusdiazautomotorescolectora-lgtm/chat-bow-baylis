@@ -30,16 +30,18 @@ apiRouter.get("/conversations/:id/messages", async (req, res) => {
   res.json(msgs);
 });
 
-const ReplySchema = z.object({
-  text: z.string().min(1).optional(),
-  image_url: z.string().url().optional(),
-  // accept camelCase too (some clients send this)
-  imageUrl: z.string().url().optional(),
-  caption: z.string().optional(),
-}).transform((v) => ({
-  ...v,
-  image_url: v.image_url ?? v.imageUrl,
-}));
+const ReplySchema = z
+  .object({
+    text: z.string().min(1).optional(),
+    image_url: z.string().url().optional(),
+    // accept camelCase too (some clients send this)
+    imageUrl: z.string().url().optional(),
+    caption: z.string().optional(),
+  })
+  .transform((v) => ({
+    ...v,
+    image_url: v.image_url ?? v.imageUrl,
+  }));
 
 apiRouter.post("/conversations/:id/reply", async (req, res) => {
   const tenantId = getTenantId(req);
@@ -91,7 +93,7 @@ apiRouter.post("/conversations/:id/reply", async (req, res) => {
       text: body.data.text || body.data.caption || null,
       mediaUrl: body.data.image_url || null,
       ts: BigInt(Date.now()),
-    }
+    },
   });
 
   await prisma.conversation.update({ where: { id: convo.id }, data: { lastMessageAt: new Date() } });
@@ -105,16 +107,30 @@ apiRouter.post("/conversations/:id/reply", async (req, res) => {
 apiRouter.post("/conversations/:id/takeover", async (req, res) => {
   const tenantId = getTenantId(req);
   const convoId = req.params.id;
-  const convo = await prisma.conversation.update({ where: { id: convoId }, data: { mode: "HUMAN" } });
-  io.to(tenantId).emit("conversation_updated", { tenantId, conversationId: convo.id });
+
+  const result = await prisma.conversation.updateMany({
+    where: { id: convoId, tenantId },
+    data: { mode: "HUMAN" },
+  });
+
+  if (result.count === 0) return res.status(404).json({ ok: false, error: "Conversation not found" });
+
+  io.to(tenantId).emit("conversation_updated", { tenantId, conversationId: convoId });
   res.json({ ok: true });
 });
 
 apiRouter.post("/conversations/:id/return-to-bot", async (req, res) => {
   const tenantId = getTenantId(req);
   const convoId = req.params.id;
-  const convo = await prisma.conversation.update({ where: { id: convoId }, data: { mode: "BOT_ON" } });
-  io.to(tenantId).emit("conversation_updated", { tenantId, conversationId: convo.id });
+
+  const result = await prisma.conversation.updateMany({
+    where: { id: convoId, tenantId },
+    data: { mode: "BOT_ON" },
+  });
+
+  if (result.count === 0) return res.status(404).json({ ok: false, error: "Conversation not found" });
+
+  io.to(tenantId).emit("conversation_updated", { tenantId, conversationId: convoId });
   res.json({ ok: true });
 });
 
@@ -124,7 +140,13 @@ apiRouter.post("/conversations/:id/assign", async (req, res) => {
   const body = z.object({ user_id: z.string().uuid().nullable() }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ ok: false, error: body.error.flatten() });
 
-  const convo = await prisma.conversation.update({ where: { id: convoId }, data: { assignedUserId: body.data.user_id } });
-  io.to(tenantId).emit("conversation_updated", { tenantId, conversationId: convo.id });
+  const result = await prisma.conversation.updateMany({
+    where: { id: convoId, tenantId },
+    data: { assignedUserId: body.data.user_id },
+  });
+
+  if (result.count === 0) return res.status(404).json({ ok: false, error: "Conversation not found" });
+
+  io.to(tenantId).emit("conversation_updated", { tenantId, conversationId: convoId });
   res.json({ ok: true });
 });

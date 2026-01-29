@@ -1,24 +1,15 @@
 {
-  "name": "omni-hub-mvp",
+  "name": "@omni/panel-mvp",
   "private": true,
+  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm-run-all -p dev:core dev:wa dev:meta dev:panel",
-    "dev:core": "npm --workspace apps/core-api run dev",
-    "dev:wa": "npm --workspace apps/gateway-wa run dev",
-    "dev:meta": "npm --workspace apps/gateway-meta run dev",
-    "dev:panel": "npm --workspace apps/panel-web run dev",
-    "build": "npm-run-all build:shared build:core build:wa build:meta build:panel",
-    "build:shared": "npm --workspace packages/shared run build",
-    "build:core": "npm --workspace apps/core-api run build",
-    "build:wa": "npm --workspace apps/gateway-wa run build",
-    "build:meta": "npm --workspace apps/gateway-meta run build",
-    "build:panel": "npm --workspace apps/panel-web run build"
-  },
-  "devDependencies": {
-    "npm-run-all": "^4.1.5"
+    "dev": "npm -w @omni/panel-api run dev",
+    "dev:web": "npm -w @omni/panel-web run dev",
+    "build": "npm -ws run build",
+    "lint": "npm -ws run lint"
   }
 }
