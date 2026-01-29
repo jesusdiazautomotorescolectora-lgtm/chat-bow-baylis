@@ -12,7 +12,9 @@ function normalizeTsToMs(ts: number): number {
   return ts < 1_000_000_000_000 ? ts * 1000 : ts;
 }
 
-
+inboundRouter.post("/", (req, res) => {
+  res.json({ ok: true });
+});
 const InboundSchema = z.object({
   type: z.literal("inbound_message"),
   payload: z.object({
